@@ -1,11 +1,869 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>PakePlus</title>
-    </head>
-    <body>
-        PakePlus
-    </body>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tencent WebRTC 推流控制台</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #111b30;
+      --line: #24324d;
+      --text: #e7eefc;
+      --muted: #9fb0d1;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --primary: #3b82f6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Microsoft YaHei", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+    }
+    h1 { margin: 0 0 12px; font-size: 22px; }
+    h2 { margin: 0 0 10px; font-size: 16px; }
+    .tip {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      color: var(--muted);
+      background: rgba(59, 130, 246, 0.08);
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 12px;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      padding: 12px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 120px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .row.no-btn { grid-template-columns: 120px 1fr; }
+    .row.stack { grid-template-columns: 1fr; }
+    label { color: var(--muted); font-size: 13px; }
+    input, select, button, textarea {
+      width: 100%;
+      border: 1px solid #3b4b6d;
+      border-radius: 6px;
+      background: #0d1528;
+      color: var(--text);
+      padding: 8px;
+      font-size: 13px;
+    }
+    textarea { min-height: 88px; resize: vertical; }
+    button {
+      cursor: pointer;
+      background: #1f2d4a;
+      transition: all .15s ease;
+    }
+    button:hover { border-color: var(--primary); }
+    .btn-primary { background: #1d4ed8; border-color: #2563eb; }
+    .btn-danger { background: #7f1d1d; border-color: #b91c1c; }
+    .btn-good { background: #14532d; border-color: #16a34a; }
+    .status-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .pill.ok { color: #bbf7d0; border-color: #166534; background: rgba(34, 197, 94, 0.15); }
+    .pill.warn { color: #fde68a; border-color: #92400e; background: rgba(245, 158, 11, 0.16); }
+    .pill.err { color: #fecaca; border-color: #991b1b; background: rgba(239, 68, 68, 0.14); }
+    #local_video {
+      width: 100%;
+      min-height: 280px;
+      border: 1px dashed #3b4b6d;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      background: #09101e;
+      overflow: hidden;
+    }
+    #local_video video {
+      transform-origin: center center;
+      will-change: transform;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    .preview-tools {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 8px;
+      margin-bottom: 6px;
+    }
+    .preview-tools button { padding: 6px; font-size: 12px; }
+    .preview-meta {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    #stats, #logs {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #0a1020;
+      min-height: 90px;
+    }
+  </style>
+</head>
+<body>
+  <h1>腾讯云 Web 推流控制台（TXLivePusher）</h1>
+  <div class="tip">
+    需使用 <code>https</code> 或 <code>localhost</code> 打开页面；先采集音/视频，再开始推流。<br />
+    SDK 来源：<code>TXLivePusher-2.1.1.min.js</code>，并实现了设备管理、质量控制、静音、音量、状态精准显示与高级功能。
+  </div>
+
+  <div class="status-bar">
+    <span id="pushStatePill" class="pill">推流状态：未初始化</span>
+    <span id="captureStatePill" class="pill">采集状态：无</span>
+    <span id="observerStatePill" class="pill">连接码：-</span>
+  </div>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>预览与推流</h2>
+      <div id="local_video">本地预览区</div>
+      <div class="preview-tools">
+        <button id="zoomOutBtn">缩小 -</button>
+        <button id="zoomInBtn">放大 +</button>
+        <button id="fitContainBtn">适应窗口</button>
+        <button id="fitCoverBtn">填满窗口</button>
+        <button id="resetViewBtn">重置视图</button>
+        <button id="previewFullscreenBtn">预览全屏</button>
+      </div>
+      <div class="preview-meta">
+        <span id="zoomText">缩放：100%</span>
+        <span>提示：滚轮缩放，按住拖拽平移</span>
+      </div>
+      <div class="row stack" style="margin-top:10px;">
+        <label for="pushUrl">推流地址（webrtc://...）</label>
+        <input id="pushUrl" placeholder="webrtc://domain/AppName/StreamName?txSecret=xxx&txTime=xxx" />
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button id="initBtn" class="btn-good">初始化推流器</button>
+        <button id="startPushBtn" class="btn-primary">开始推流</button>
+        <button id="stopPushBtn" class="btn-danger">停止推流</button>
+      </div>
+      <div class="row no-btn">
+        <label>
+          <input id="previewMute" type="checkbox" style="width:auto;margin-right:6px;" checked />
+          本地预览静音（防回声）
+        </label>
+        <label>
+          <input id="pushAudioMute" type="checkbox" style="width:auto;margin-right:6px;" />
+          推流音频静音（setAudioMute）
+        </label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>采集管理（屏幕 / 摄像头 / 麦克风）</h2>
+      <div class="row">
+        <label>摄像头</label>
+        <select id="cameraSelect"></select>
+        <button id="startCameraBtn">开启摄像头</button>
+      </div>
+      <div class="row">
+        <label>摄像头切换</label>
+        <button id="switchCameraBtn">切换到所选摄像头</button>
+        <button id="stopCameraBtn">关闭摄像头</button>
+      </div>
+      <div class="row">
+        <label>麦克风</label>
+        <select id="micSelect"></select>
+        <button id="startMicBtn">开启麦克风</button>
+      </div>
+      <div class="row">
+        <label>麦克风切换</label>
+        <button id="switchMicBtn">切换到所选麦克风</button>
+        <button id="stopMicBtn">关闭麦克风</button>
+      </div>
+      <div class="row">
+        <label>屏幕采集</label>
+        <label><input id="screenAudio" type="checkbox" style="width:auto;margin-right:6px;" />采集系统/标签页声音</label>
+        <button id="startScreenBtn">开启屏幕采集</button>
+      </div>
+      <div class="row">
+        <label>屏幕采集停止</label>
+        <button id="stopScreenBtn">关闭屏幕采集</button>
+        <button id="refreshDeviceBtn">刷新设备列表</button>
+      </div>
+      <div class="row no-btn">
+        <label>
+          <input id="allowMultiVideo" type="checkbox" style="width:auto;margin-right:6px;" />
+          允许摄像头+屏幕共存（自动启用本地混流）
+        </label>
+        <div style="color:var(--muted);font-size:12px;">未勾选时，开启新视频源会自动关闭旧视频源，避免 video track is existed</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>质量与音频控制</h2>
+      <div class="row">
+        <label>推流视频质量</label>
+        <select id="videoQuality">
+          <option>360p</option><option>480p</option><option selected>720p</option><option>1080p</option><option>2K</option><option>4K</option>
+        </select>
+        <button id="applyVideoQualityBtn">应用</button>
+      </div>
+      <div class="row">
+        <label>推流音频质量</label>
+        <select id="audioQuality">
+          <option selected>standard</option><option>high</option>
+        </select>
+        <button id="applyAudioQualityBtn">应用</button>
+      </div>
+      <div class="row">
+        <label>音量（0-100）</label>
+        <input id="volumeRange" type="range" min="0" max="100" value="100" />
+        <button id="applyVolumeBtn">设置音量</button>
+      </div>
+      <div class="row no-btn">
+        <label>当前音量</label>
+        <div id="volumeText">100</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>高级功能（setProperty / 混流 / 文本 / contentHint）</h2>
+      <div class="row">
+        <label>视频帧率 FPS</label>
+        <input id="videoFps" type="number" min="1" max="60" value="25" />
+        <button id="setFpsBtn">setProperty</button>
+      </div>
+      <div class="row">
+        <label>视频码率 kbps</label>
+        <input id="videoBitrate" type="number" min="100" max="12000" value="1500" />
+        <button id="setVBitrateBtn">setProperty</button>
+      </div>
+      <div class="row">
+        <label>音频码率 kbps</label>
+        <input id="audioBitrate" type="number" min="16" max="512" value="128" />
+        <button id="setABitrateBtn">setProperty</button>
+      </div>
+      <div class="row">
+        <label>视频 contentHint</label>
+        <select id="contentHint">
+          <option value="">默认</option>
+          <option value="motion">motion（流畅）</option>
+          <option value="detail" selected>detail（清晰，适合屏幕）</option>
+          <option value="text">text（文本）</option>
+        </select>
+        <button id="setContentHintBtn">应用</button>
+      </div>
+      <div class="row">
+        <button id="enableMixingBtn" class="btn-good">启用本地混流 + 时间文本</button>
+        <button id="disableMixingBtn">关闭混流/文本</button>
+        <button id="checkSupportBtn">浏览器能力检查</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>统计与日志</h2>
+      <div id="stats">等待统计数据...</div>
+      <div style="height:8px;"></div>
+      <div id="logs">等待操作日志...</div>
+    </section>
+  </div>
+
+  <script src="https://video.sdk.qcloudecdn.com/web/TXLivePusher-2.1.1.min.js" charset="utf-8"></script>
+  <script>
+    let livePusher = null;
+    let deviceManager = null;
+    let audioEffectManager = null;
+    let videoEffectManager = null;
+
+    let cameraStreamId = "";
+    let micStreamId = "";
+    let screenStreamId = "";
+    let textTicker = null;
+    const previewState = {
+      scale: 1,
+      minScale: 0.5,
+      maxScale: 4,
+      x: 0,
+      y: 0,
+      fitMode: "contain",
+      dragging: false,
+      startX: 0,
+      startY: 0,
+      baseX: 0,
+      baseY: 0
+    };
+
+    const runtime = {
+      initialized: false,
+      intendedPush: false,
+      pushStatusCode: -1,
+      pushConnected: false,
+      capture: { camera: false, mic: false, screen: false },
+      pushAudioMuted: false,
+      mixingEnabled: false
+    };
+
+    const dom = {
+      pushStatePill: document.getElementById("pushStatePill"),
+      captureStatePill: document.getElementById("captureStatePill"),
+      observerStatePill: document.getElementById("observerStatePill"),
+      stats: document.getElementById("stats"),
+      logs: document.getElementById("logs"),
+      pushUrl: document.getElementById("pushUrl"),
+      cameraSelect: document.getElementById("cameraSelect"),
+      micSelect: document.getElementById("micSelect"),
+      volumeRange: document.getElementById("volumeRange"),
+      volumeText: document.getElementById("volumeText"),
+      previewMute: document.getElementById("previewMute"),
+      pushAudioMute: document.getElementById("pushAudioMute"),
+      screenAudio: document.getElementById("screenAudio"),
+      videoQuality: document.getElementById("videoQuality"),
+      audioQuality: document.getElementById("audioQuality"),
+      videoFps: document.getElementById("videoFps"),
+      videoBitrate: document.getElementById("videoBitrate"),
+      audioBitrate: document.getElementById("audioBitrate"),
+      contentHint: document.getElementById("contentHint"),
+      allowMultiVideo: document.getElementById("allowMultiVideo"),
+      localVideo: document.getElementById("local_video"),
+      zoomText: document.getElementById("zoomText")
+    };
+
+    function log(msg, isError) {
+      const t = new Date().toLocaleTimeString();
+      const line = "[" + t + "] " + msg;
+      dom.logs.textContent = line + "\n" + dom.logs.textContent;
+      if (isError) console.error(line); else console.log(line);
+    }
+
+    function initPushUrlFromRoute() {
+      const params = new URLSearchParams(window.location.search || "");
+      const routePushUrl = (params.get("pushUrl") || params.get("url") || "").trim();
+      if (routePushUrl) {
+        dom.pushUrl.value = routePushUrl;
+        log("已从路由参数载入推流地址");
+      }
+    }
+
+    function setPushState(text, cls) {
+      dom.pushStatePill.className = "pill " + (cls || "");
+      dom.pushStatePill.textContent = "推流状态：" + text;
+    }
+
+    function updateCaptureState() {
+      const parts = [];
+      if (runtime.capture.camera) parts.push("摄像头");
+      if (runtime.capture.mic) parts.push("麦克风");
+      if (runtime.capture.screen) parts.push("屏幕");
+      const txt = parts.length ? parts.join(" + ") : "无";
+      dom.captureStatePill.className = "pill " + (parts.length ? "ok" : "");
+      dom.captureStatePill.textContent = "采集状态：" + txt;
+    }
+
+    function applyAccuratePushState(reason) {
+      const code = runtime.pushStatusCode;
+      if (!runtime.initialized) {
+        setPushState("未初始化", "warn");
+        return;
+      }
+      if (!runtime.intendedPush && !runtime.pushConnected) {
+        setPushState("已停止", "");
+      } else if (code === 1) {
+        setPushState("连接中", "warn");
+      } else if (code === 2 || (runtime.intendedPush && runtime.pushConnected)) {
+        setPushState("推流中", "ok");
+      } else if (code === 3) {
+        setPushState("重连中", "warn");
+      } else if (code === 0 && runtime.intendedPush) {
+        setPushState("连接断开", "err");
+      } else if (runtime.intendedPush) {
+        setPushState("启动中", "warn");
+      } else {
+        setPushState("已停止", "");
+      }
+      if (reason) log("状态刷新：" + reason + " -> " + dom.pushStatePill.textContent);
+    }
+
+    function ensureInit() {
+      if (!runtime.initialized || !livePusher) {
+        throw new Error("请先初始化推流器");
+      }
+    }
+
+    function syncPreviewVideoElement() {
+      if (!livePusher || !livePusher.videoView) return;
+      const v = livePusher.videoView;
+      v.style.width = "100%";
+      v.style.height = "100%";
+      v.style.objectFit = previewState.fitMode;
+      v.muted = Boolean(dom.previewMute.checked);
+      v.setAttribute("playsinline", "true");
+      v.setAttribute("webkit-playsinline", "true");
+      applyPreviewTransform();
+    }
+
+    function applyPreviewTransform() {
+      if (!livePusher || !livePusher.videoView) return;
+      const v = livePusher.videoView;
+      v.style.transform = "translate(" + previewState.x + "px," + previewState.y + "px) scale(" + previewState.scale + ")";
+      dom.zoomText.textContent = "缩放：" + Math.round(previewState.scale * 100) + "%";
+    }
+
+    function setPreviewScale(nextScale) {
+      previewState.scale = Math.min(previewState.maxScale, Math.max(previewState.minScale, nextScale));
+      applyPreviewTransform();
+    }
+
+    function resetPreviewView() {
+      previewState.scale = 1;
+      previewState.x = 0;
+      previewState.y = 0;
+      previewState.fitMode = "contain";
+      syncPreviewVideoElement();
+      log("预览视图已重置");
+    }
+
+    function setPreviewFitMode(mode) {
+      previewState.fitMode = mode;
+      syncPreviewVideoElement();
+      log("预览模式：" + (mode === "cover" ? "填满窗口" : "适应窗口"));
+    }
+
+    function setupPreviewInteractions() {
+      const box = dom.localVideo;
+      box.addEventListener("wheel", function(e) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.1 : -0.1;
+        setPreviewScale(previewState.scale + delta);
+      }, { passive: false });
+
+      box.addEventListener("mousedown", function(e) {
+        previewState.dragging = true;
+        previewState.startX = e.clientX;
+        previewState.startY = e.clientY;
+        previewState.baseX = previewState.x;
+        previewState.baseY = previewState.y;
+        box.style.cursor = "grabbing";
+      });
+      window.addEventListener("mousemove", function(e) {
+        if (!previewState.dragging) return;
+        previewState.x = previewState.baseX + (e.clientX - previewState.startX);
+        previewState.y = previewState.baseY + (e.clientY - previewState.startY);
+        applyPreviewTransform();
+      });
+      window.addEventListener("mouseup", function() {
+        previewState.dragging = false;
+        box.style.cursor = "default";
+      });
+    }
+
+    function stopCameraInternal() {
+      if (!runtime.capture.camera) return;
+      livePusher.stopCamera(cameraStreamId || undefined);
+      cameraStreamId = "";
+      runtime.capture.camera = false;
+    }
+
+    function stopScreenInternal() {
+      if (!runtime.capture.screen) return;
+      livePusher.stopScreenCapture(screenStreamId || undefined);
+      screenStreamId = "";
+      runtime.capture.screen = false;
+    }
+
+    function ensureVideoTrackCapacity(target) {
+      const allowMulti = Boolean(dom.allowMultiVideo.checked);
+      if (allowMulti && !runtime.mixingEnabled) {
+        videoEffectManager.enableMixing(true);
+        runtime.mixingEnabled = true;
+        log("已自动启用本地混流（允许多路视频）");
+      }
+      if (allowMulti || runtime.mixingEnabled) return;
+      if (target === "screen" && runtime.capture.camera) {
+        stopCameraInternal();
+        log("为开启屏幕采集，已自动关闭摄像头（单路视频模式）");
+      }
+      if (target === "camera" && runtime.capture.screen) {
+        stopScreenInternal();
+        log("为开启摄像头，已自动关闭屏幕采集（单路视频模式）");
+      }
+      updateCaptureState();
+    }
+
+    async function refreshDevices() {
+      ensureInit();
+      const list = await deviceManager.getDevicesList();
+      const videos = list.filter(d => d.type === "video");
+      const audios = list.filter(d => d.type === "audio");
+
+      dom.cameraSelect.innerHTML = videos.map(d => "<option value='" + d.deviceId + "'>" + (d.deviceName || d.deviceId || "摄像头") + "</option>").join("");
+      dom.micSelect.innerHTML = audios.map(d => "<option value='" + d.deviceId + "'>" + (d.deviceName || d.deviceId || "麦克风") + "</option>").join("");
+      log("设备列表刷新完成：摄像头 " + videos.length + "，麦克风 " + audios.length);
+    }
+
+    function installObserver() {
+      livePusher.setObserver({
+        onError: function(code, message) {
+          runtime.pushConnected = false;
+          runtime.pushStatusCode = 0;
+          dom.observerStatePill.className = "pill err";
+          dom.observerStatePill.textContent = "连接码：错误 " + code;
+          applyAccuratePushState("onError");
+          log("onError code=" + code + " msg=" + message, true);
+        },
+        onWarning: function(code, message) {
+          log("onWarning code=" + code + " msg=" + message, true);
+        },
+        onCaptureFirstAudioFrame: function() {
+          log("首帧音频采集完成");
+        },
+        onCaptureFirstVideoFrame: function() {
+          log("首帧视频采集完成");
+        },
+        onPushStatusUpdate: function(status, message) {
+          runtime.pushStatusCode = status;
+          runtime.pushConnected = (status === 2);
+          dom.observerStatePill.className = "pill";
+          if (status === 2) dom.observerStatePill.className += " ok";
+          if (status === 1 || status === 3) dom.observerStatePill.className += " warn";
+          if (status === 0) dom.observerStatePill.className += " err";
+          dom.observerStatePill.textContent = "连接码：" + status + " / " + (message || "");
+          applyAccuratePushState("onPushStatusUpdate");
+        },
+        onStatisticsUpdate: function(s) {
+          const fps = s && s.video ? s.video.framesPerSecond : "-";
+          const vb = s && s.video ? s.video.bitrate : "-";
+          const ab = s && s.audio ? s.audio.bitrate : "-";
+          const wh = s && s.video ? ((s.video.frameWidth || "-") + "x" + (s.video.frameHeight || "-")) : "-";
+          dom.stats.textContent =
+            "video.fps: " + fps + "\n" +
+            "video.bitrate(bit/s): " + vb + "\n" +
+            "audio.bitrate(bit/s): " + ab + "\n" +
+            "resolution: " + wh + "\n" +
+            "timestamp: " + (s && s.timestamp ? new Date(s.timestamp).toLocaleString() : "-");
+        }
+      });
+    }
+
+    async function initPusher() {
+      if (runtime.initialized) {
+        log("已初始化，无需重复初始化");
+        return;
+      }
+      if (typeof TXLivePusher !== "function") {
+        throw new Error("TXLivePusher SDK 未正确加载");
+      }
+
+      livePusher = new TXLivePusher();
+      const preview = document.getElementById("local_video");
+      preview.innerHTML = "";
+      livePusher.setRenderView(preview);
+      setTimeout(syncPreviewVideoElement, 0);
+      setTimeout(syncPreviewVideoElement, 200);
+
+      livePusher.setVideoQuality(dom.videoQuality.value);
+      livePusher.setAudioQuality(dom.audioQuality.value);
+      livePusher.setProperty("setVideoFPS", Number(dom.videoFps.value) || 25);
+      livePusher.setProperty("setVideoBitrate", Number(dom.videoBitrate.value) || 1500);
+      livePusher.setProperty("setAudioBitrate", Number(dom.audioBitrate.value) || 128);
+      livePusher.setProperty("setConnectRetryCount", 5);
+      livePusher.setProperty("setConnectRetryDelay", 2);
+      livePusher.setProperty("enableAudioAEC", true);
+      livePusher.setProperty("enableAudioAGC", true);
+      livePusher.setProperty("enableAudioANS", true);
+      livePusher.setVideoContentHint(dom.contentHint.value);
+
+      deviceManager = livePusher.getDeviceManager();
+      audioEffectManager = livePusher.getAudioEffectManager();
+      videoEffectManager = livePusher.getVideoEffectManager();
+
+      installObserver();
+      runtime.initialized = true;
+      applyAccuratePushState("init");
+      updateCaptureState();
+      await refreshDevices();
+      log("TXLivePusher 初始化完成");
+      log("提示：初始化后仍需点击“开启摄像头”或“开启屏幕采集”才会看到实时画面");
+    }
+
+    async function startPush() {
+      ensureInit();
+      const url = dom.pushUrl.value.trim();
+      if (!url.startsWith("webrtc://")) throw new Error("推流地址必须是 webrtc://");
+      if (!runtime.capture.camera && !runtime.capture.mic && !runtime.capture.screen) {
+        throw new Error("请先开启至少一路采集（摄像头/麦克风/屏幕）");
+      }
+      runtime.intendedPush = true;
+      runtime.pushConnected = false;
+      runtime.pushStatusCode = 1;
+      applyAccuratePushState("startPush-call");
+      await livePusher.startPush(url);
+      log("startPush 调用成功，等待状态回调确认连接");
+    }
+
+    function stopPush() {
+      ensureInit();
+      runtime.intendedPush = false;
+      livePusher.stopPush();
+      runtime.pushConnected = false;
+      runtime.pushStatusCode = 0;
+      applyAccuratePushState("stopPush-call");
+      log("stopPush 已调用");
+    }
+
+    async function startCamera() {
+      ensureInit();
+      ensureVideoTrackCapacity("camera");
+      const id = dom.cameraSelect.value || undefined;
+      cameraStreamId = await livePusher.startCamera(id);
+      syncPreviewVideoElement();
+      runtime.capture.camera = true;
+      updateCaptureState();
+      await refreshDevices();
+      log("摄像头已开启，streamId=" + cameraStreamId);
+    }
+
+    function stopCamera() {
+      ensureInit();
+      stopCameraInternal();
+      updateCaptureState();
+      log("摄像头已关闭");
+    }
+
+    async function startMic() {
+      ensureInit();
+      const id = dom.micSelect.value || undefined;
+      micStreamId = await livePusher.startMicrophone(id);
+      syncPreviewVideoElement();
+      runtime.capture.mic = true;
+      updateCaptureState();
+      await refreshDevices();
+      log("麦克风已开启，streamId=" + micStreamId);
+    }
+
+    function stopMic() {
+      ensureInit();
+      livePusher.stopMicrophone(micStreamId || undefined);
+      micStreamId = "";
+      runtime.capture.mic = false;
+      updateCaptureState();
+      log("麦克风已关闭");
+    }
+
+    async function startScreen() {
+      ensureInit();
+      ensureVideoTrackCapacity("screen");
+      screenStreamId = await livePusher.startScreenCapture(Boolean(dom.screenAudio.checked));
+      syncPreviewVideoElement();
+      runtime.capture.screen = true;
+      updateCaptureState();
+      log("屏幕采集已开启，streamId=" + screenStreamId);
+    }
+
+    function stopScreen() {
+      ensureInit();
+      stopScreenInternal();
+      updateCaptureState();
+      log("屏幕采集已关闭");
+    }
+
+    async function switchCamera() {
+      ensureInit();
+      const deviceId = dom.cameraSelect.value;
+      if (!deviceId) throw new Error("请先选择摄像头");
+      await deviceManager.switchCamera(deviceId, cameraStreamId || undefined);
+      log("已切换摄像头设备");
+    }
+
+    async function switchMic() {
+      ensureInit();
+      const deviceId = dom.micSelect.value;
+      if (!deviceId) throw new Error("请先选择麦克风");
+      await deviceManager.switchMicrophone(deviceId, micStreamId || undefined);
+      log("已切换麦克风设备");
+    }
+
+    function setVolume() {
+      ensureInit();
+      const v = Number(dom.volumeRange.value);
+      audioEffectManager.setVolume(v, micStreamId || undefined);
+      dom.volumeText.textContent = String(v);
+      log("音量已设置为 " + v);
+    }
+
+    function bindEvents() {
+      const byId = id => document.getElementById(id);
+      const safe = async (fn) => {
+        try { await fn(); } catch (e) { log((e && e.message) || String(e), true); }
+      };
+
+      byId("initBtn").onclick = () => safe(initPusher);
+      byId("startPushBtn").onclick = () => safe(startPush);
+      byId("stopPushBtn").onclick = () => safe(stopPush);
+      byId("refreshDeviceBtn").onclick = () => safe(refreshDevices);
+      byId("startCameraBtn").onclick = () => safe(startCamera);
+      byId("stopCameraBtn").onclick = () => safe(stopCamera);
+      byId("switchCameraBtn").onclick = () => safe(switchCamera);
+      byId("startMicBtn").onclick = () => safe(startMic);
+      byId("stopMicBtn").onclick = () => safe(stopMic);
+      byId("switchMicBtn").onclick = () => safe(switchMic);
+      byId("startScreenBtn").onclick = () => safe(startScreen);
+      byId("stopScreenBtn").onclick = () => safe(stopScreen);
+      byId("applyVolumeBtn").onclick = () => safe(setVolume);
+
+      dom.volumeRange.oninput = () => { dom.volumeText.textContent = dom.volumeRange.value; };
+
+      byId("applyVideoQualityBtn").onclick = () => safe(async () => {
+        ensureInit();
+        livePusher.setVideoQuality(dom.videoQuality.value);
+        log("视频质量已设置为 " + dom.videoQuality.value);
+      });
+      byId("applyAudioQualityBtn").onclick = () => safe(async () => {
+        ensureInit();
+        livePusher.setAudioQuality(dom.audioQuality.value);
+        log("音频质量已设置为 " + dom.audioQuality.value);
+      });
+      byId("setFpsBtn").onclick = () => safe(async () => {
+        ensureInit();
+        livePusher.setProperty("setVideoFPS", Number(dom.videoFps.value));
+        log("setProperty(setVideoFPS) 已应用");
+      });
+      byId("setVBitrateBtn").onclick = () => safe(async () => {
+        ensureInit();
+        livePusher.setProperty("setVideoBitrate", Number(dom.videoBitrate.value));
+        log("setProperty(setVideoBitrate) 已应用");
+      });
+      byId("setABitrateBtn").onclick = () => safe(async () => {
+        ensureInit();
+        livePusher.setProperty("setAudioBitrate", Number(dom.audioBitrate.value));
+        log("setProperty(setAudioBitrate) 已应用");
+      });
+      byId("setContentHintBtn").onclick = () => safe(async () => {
+        ensureInit();
+        livePusher.setVideoContentHint(dom.contentHint.value);
+        log("setVideoContentHint 已设置为 " + (dom.contentHint.value || "默认"));
+      });
+
+      dom.previewMute.onchange = () => {
+        syncPreviewVideoElement();
+        log("预览静音=" + dom.previewMute.checked);
+      };
+      dom.pushAudioMute.onchange = () => safe(async () => {
+        ensureInit();
+        runtime.pushAudioMuted = dom.pushAudioMute.checked;
+        livePusher.setAudioMute(runtime.pushAudioMuted);
+        log("推流音频静音=" + runtime.pushAudioMuted);
+      });
+
+      byId("checkSupportBtn").onclick = () => safe(async () => {
+        const support = await TXLivePusher.checkSupport();
+        log("能力检查：" + JSON.stringify(support));
+      });
+      byId("zoomInBtn").onclick = () => safe(async () => setPreviewScale(previewState.scale + 0.2));
+      byId("zoomOutBtn").onclick = () => safe(async () => setPreviewScale(previewState.scale - 0.2));
+      byId("resetViewBtn").onclick = () => safe(async () => resetPreviewView());
+      byId("fitContainBtn").onclick = () => safe(async () => setPreviewFitMode("contain"));
+      byId("fitCoverBtn").onclick = () => safe(async () => setPreviewFitMode("cover"));
+      byId("previewFullscreenBtn").onclick = () => safe(async () => {
+        if (dom.localVideo.requestFullscreen) await dom.localVideo.requestFullscreen();
+      });
+
+      byId("enableMixingBtn").onclick = () => safe(async () => {
+        ensureInit();
+        videoEffectManager.enableMixing(true);
+        runtime.mixingEnabled = true;
+        const updateText = () => {
+          videoEffectManager.setText({
+            text: "WebRTC 推流 " + new Date().toLocaleString(),
+            style: {
+              font: "Arial",
+              font_size: 20,
+              font_color: "#00ff88",
+              font_alpha: 100,
+              bold: 1,
+              background_color: "#000000",
+              background_alpha: 45
+            },
+            x: 180,
+            y: 30,
+            zOrder: 99
+          });
+        };
+        updateText();
+        if (textTicker) clearInterval(textTicker);
+        textTicker = setInterval(updateText, 1000);
+        log("已启用本地混流，并叠加时间文本");
+      });
+
+      byId("disableMixingBtn").onclick = () => safe(async () => {
+        ensureInit();
+        if (textTicker) { clearInterval(textTicker); textTicker = null; }
+        videoEffectManager.setText(null);
+        videoEffectManager.enableMixing(false);
+        runtime.mixingEnabled = false;
+        dom.allowMultiVideo.checked = false;
+        log("已关闭本地混流和文本叠加");
+      });
+
+      window.addEventListener("beforeunload", function() {
+        try {
+          if (!livePusher) return;
+          if (runtime.intendedPush || livePusher.isPushing()) livePusher.stopPush();
+          livePusher.stopCamera(cameraStreamId || undefined);
+          livePusher.stopMicrophone(micStreamId || undefined);
+          livePusher.stopScreenCapture(screenStreamId || undefined);
+          livePusher.destroy();
+        } catch (_) {}
+      });
+
+      // 双重校验，避免 UI 与真实状态偏差。
+      setInterval(function() {
+        if (!livePusher || !runtime.initialized) return;
+        const pushing = livePusher.isPushing();
+        if (pushing && !runtime.pushConnected) {
+          runtime.pushConnected = true;
+          applyAccuratePushState("isPushing=true");
+        }
+        if (!pushing && runtime.intendedPush && runtime.pushStatusCode === 0) {
+          applyAccuratePushState("isPushing=false with intendedPush");
+        }
+      }, 1000);
+    }
+
+    bindEvents();
+    setupPreviewInteractions();
+    initPushUrlFromRoute();
+    updateCaptureState();
+    applyAccuratePushState("boot");
+    log("页面已加载，请先点击“初始化推流器”");
+  </script>
+</body>
 </html>
